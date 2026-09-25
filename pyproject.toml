@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dna-sequence-function-classifier"
+version = "0.1.0"
+description = "DNA sequence function classification using k-mer features and machine learning."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "Mudit Gupta" }
+]
+dependencies = [
+  "numpy>=1.26,<3",
+  "pandas>=2.1,<4",
+  "scikit-learn>=1.4,<2",
+  "joblib>=1.3,<2",
+  "matplotlib>=3.8,<4"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8,<10"
+]
+
+[project.scripts]
+dna-train = "dna_function_classifier.train:main"
+dna-evaluate = "dna_function_classifier.evaluate:main"
+dna-predict = "dna_function_classifier.predict:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
