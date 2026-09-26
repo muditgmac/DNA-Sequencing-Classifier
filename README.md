@@ -1,41 +1,54 @@
 # DNA Sequence Function Classifier
 
-This project uses machine learning to predict the functional class of a gene from the DNA sequence of its coding region.
+I built this project to predict the functional class of a gene from the DNA sequence of its coding region using machine learning.
 
-The main idea is to treat a DNA sequence in a similar way to text. Instead of words, the sequence is divided into overlapping groups of nucleotides called k-mers. These k-mers are then converted into numerical features using a bag-of-words representation and used to train a classification model.
+The baseline represents DNA sequences as overlapping k-mers and treats the resulting sequence of k-mers in a similar way to text. I use `CountVectorizer` to generate sparse count-based features and train a Multinomial Naive Bayes classifier on those features.
 
-The current implementation uses Multinomial Naive Bayes and was tested on human, chimpanzee, and dog DNA sequence datasets. The best configuration obtained an accuracy of approximately 98.4% on the project dataset.
+The project uses human, chimpanzee, and dog coding sequence datasets. The original notebook implementation achieved approximately 98.4% accuracy on its human test split.
 
-I am currently extending the project with transformer-based genomic sequence models and a more detailed evaluation of cross-species generalization.
+I have since reorganized the project into a reproducible Python package, added separate training and evaluation scripts, added automated tests and GitHub Actions, and rerun the baseline using a stricter train-test workflow.
 
-## Project Objective
+The current refactored implementation achieves:
 
-The objective of the project is to check whether the function associated with a coding DNA sequence can be predicted using sequence information alone.
+- 97.95% accuracy on the held-out human test set
+- 98.93% accuracy when the human-trained model is evaluated on chimpanzee sequences
+- 91.71% accuracy when the same model is evaluated on dog sequences
 
-The original implementation focuses on three questions:
+I am currently extending the project with pretrained genomic transformer models and sequence-similarity-aware evaluation.
+
+## Objective
+
+The main objective is to test how much information about gene function can be learned directly from coding DNA sequence.
+
+The project focuses on the following questions:
 
 - Can DNA sequences be represented using methods commonly used in natural language processing?
-- Can a relatively simple machine learning model identify useful patterns from this representation?
-- Can the same approach be applied to sequence datasets from multiple species?
+- Can a classical machine learning model learn useful functional patterns from k-mer representations?
+- How well does a model trained on human sequences transfer to sequences from other species?
+- Does performance change when train-test separation is made stricter?
+- Can pretrained genomic language models improve on the classical k-mer baseline?
 
-The project currently uses coding sequence data from:
+The current datasets contain sequences from:
 
 - Human
 - Chimpanzee
 - Dog
 
-## Approach
+## Method
 
-The current workflow is:
+The current baseline follows this pipeline:
 
 ```text
 DNA sequence
     |
     v
-k-mer generation
+Sequence cleaning
     |
     v
-Bag-of-words representation
+Overlapping 6-mers
+    |
+    v
+4-token n-gram representation
     |
     v
 CountVectorizer
@@ -47,17 +60,19 @@ Multinomial Naive Bayes
 Predicted functional class
 ```
 
-### 1. Sequence Processing
+### 1. Sequence preprocessing
 
-Each DNA sequence is divided into overlapping k-mers.
+Each DNA sequence is cleaned and converted to uppercase.
 
-For example, consider the sequence:
+The sequence is then divided into overlapping k-mers.
+
+For example, consider:
 
 ```text
 ATGCGTACG
 ```
 
-Using k = 4, it can be represented as:
+Using `k = 4`, the overlapping k-mers would be:
 
 ```text
 ATGC
@@ -68,151 +83,386 @@ GTAC
 TACG
 ```
 
-These k-mers are treated as tokens.
+The reproduced baseline uses 6-mers, matching the original notebook.
 
-This allows DNA sequences of different lengths to be converted into a representation that can be processed using standard machine learning methods.
+For a sequence of length `n` and k-mer size `k`, the number of overlapping k-mers is:
 
-### 2. Feature Generation
+```text
+n - k + 1
+```
 
-The generated k-mers are converted into numerical features using `CountVectorizer` from scikit-learn.
+### 2. Feature generation
 
-The idea is similar to a bag-of-words representation used in text classification.
+The generated k-mers are treated as tokens and converted into numerical features using `CountVectorizer`.
 
-Each sequence is represented by the occurrence of different k-mer patterns.
+The original project used:
 
-The current implementation uses an n-gram size of 4 for generating the sequence representation.
+```python
+CountVectorizer(ngram_range=(4, 4))
+```
 
-### 3. Model Training
+with DNA sequences first converted into overlapping 6-mers.
 
-The main classifier used in the project is Multinomial Naive Bayes.
+This means the classifier is not simply counting individual 6-mers. The vectorizer represents groups of four consecutive k-mer tokens.
 
-The model was selected because it works well with sparse count-based representations such as those generated by `CountVectorizer`.
+The k-mer size and `CountVectorizer` n-gram size are kept as separate parameters in the refactored code so that they can be changed independently.
 
-The smoothing parameter was tuned during experimentation.
+### 3. Train-test separation
 
-The best configuration used:
+The original notebook generated the complete vectorized human feature matrix before splitting it into training and test sets.
+
+In the refactored pipeline, I split the human sequence dataset first and fit the vectorizer only on the training portion.
+
+The held-out human sequences are transformed using the vocabulary learned from the training data.
+
+The current pipeline uses:
+
+```text
+Test size: 20%
+Random state: 42
+Stratified split: Yes
+```
+
+This gives a cleaner estimate of performance because the feature extraction step is fitted only using the training data.
+
+### 4. Classification
+
+The baseline classifier is Multinomial Naive Bayes.
+
+The reproduced configuration is:
 
 ```text
 Model: Multinomial Naive Bayes
 Alpha: 0.1
-Sequence representation: k-mer based bag-of-words
+K-mer size: 6
+CountVectorizer n-gram size: 4
+Human test size: 20%
+Random state: 42
 ```
+
+Multinomial Naive Bayes works naturally with non-negative count-based features and provides a useful classical baseline before testing larger sequence models.
 
 ## Results
 
-The best Multinomial Naive Bayes model obtained approximately:
+### Original notebook result
+
+The original notebook reported:
 
 ```text
-Accuracy: 98.4%
+Accuracy:  98.4%
+Precision: 98.4%
+Recall:    98.4%
+F1-score:  98.4%
 ```
 
-The model was tested using sequence datasets from human, chimpanzee, and dog.
+These results came from the original implementation and train-test procedure.
 
-The result shows that even a relatively simple representation based on local sequence patterns can contain enough information for the classifier to distinguish between the functional classes present in the dataset.
+### Refactored baseline
 
-The current version mainly reports accuracy. I am adding more detailed evaluation metrics as part of the next version of the project.
+I reran the model using the original 6-mer representation, 4-token `CountVectorizer` n-grams, `alpha = 0.1`, and `random_state = 42`.
 
-These will include:
+The refactored implementation performs the train-test split before fitting the vectorizer and uses a stratified split.
 
-- Precision
-- Recall
-- F1-score
-- Macro F1-score
-- Confusion matrix
-- Per-class performance
-- Cross-species performance
+| Evaluation set | Accuracy | Macro F1 | Weighted F1 | Samples |
+|---|---:|---:|---:|---:|
+| Human held-out test set | 97.95% | 97.74% | 97.94% | 876 |
+| Chimpanzee | 98.93% | 99.03% | 98.93% | 1,682 |
+| Dog | 91.71% | 91.44% | 91.68% | 820 |
 
-## Technologies Used
+The human result is slightly lower than the 98.4% reported in the original notebook, but the refactored evaluation keeps the test set separate while fitting the feature representation.
 
-The current version uses:
+### Cross-species evaluation
 
-- Python
-- pandas
-- NumPy
-- scikit-learn
-- Jupyter Notebook
-- CountVectorizer
-- Multinomial Naive Bayes
-- k-mer based sequence representation
+The classifier used for the cross-species experiment is trained using the human training set.
 
-## Repository Structure
-
-The repository currently contains the notebooks and datasets used for the original experiments.
-
-The project is being reorganized into a more structured format as the new models and evaluation methods are added.
-
-The planned structure is:
+The fitted human model is then applied directly to the chimpanzee and dog datasets without retraining on either species.
 
 ```text
-DNA-Sequence-Function-Classifier/
+Human training data
+        |
+        v
+6-mer generation
+        |
+        v
+CountVectorizer
+        |
+        v
+Multinomial Naive Bayes
+        |
+        +--------------------+
+        |                    |
+        v                    v
+Chimpanzee evaluation    Dog evaluation
+```
+
+The chimpanzee dataset produced an accuracy of approximately 98.93%, while the dog dataset produced approximately 91.71%.
+
+The lower performance on dog sequences provides a useful direction for further analysis of cross-species generalization and sequence similarity.
+
+## Evaluation metrics
+
+The refactored code calculates:
+
+- Accuracy
+- Macro F1-score
+- Weighted F1-score
+- Per-class precision
+- Per-class recall
+- Per-class F1-score
+- Confusion matrix
+
+Each training or evaluation run can save its results separately for later comparison.
+
+## Repository structure
+
+```text
+DNA-Sequencing-Classifier/
+|
+|-- .github/
+|   `-- workflows/
+|       `-- tests.yml
 |
 |-- data/
-|   |-- human/
-|   |-- chimpanzee/
-|   `-- dog/
-|
-|-- notebooks/
-|   |-- exploratory_analysis.ipynb
-|   `-- baseline_model.ipynb
-|
-|-- src/
-|   |-- preprocessing.py
-|   |-- kmer.py
-|   |-- train.py
-|   |-- evaluate.py
-|   `-- transformer_model.py
+|   `-- README.md
 |
 |-- models/
+|   `-- .gitkeep
 |
 |-- results/
+|   `-- README.md
+|
+|-- src/
+|   `-- dna_function_classifier/
+|       |-- __init__.py
+|       |-- dataset.py
+|       |-- evaluate.py
+|       |-- kmer.py
+|       |-- modeling.py
+|       |-- predict.py
+|       |-- preprocessing.py
+|       `-- train.py
 |
 |-- tests/
+|   |-- test_kmer.py
+|   `-- test_preprocessing.py
 |
+|-- DNA Sequencing and applying Classifier.ipynb
+|-- human_data.txt
+|-- chimp_data.txt
+|-- dog_data.txt
+|-- .gitignore
+|-- LICENSE
+|-- pyproject.toml
 |-- requirements.txt
 `-- README.md
 ```
 
-## Current Limitations
+The original notebook is kept in the repository as a record of the initial exploratory implementation.
 
-The current model is useful as a baseline, but there are several limitations.
+The code under `src/` contains the refactored and reusable version of the pipeline.
 
-### Loss of positional information
+## Installation
 
-The bag-of-words representation mainly considers how frequently k-mers occur.
+Python 3.10 or newer is recommended.
 
-It does not fully preserve the position of each k-mer in the original DNA sequence.
+Create a virtual environment:
 
-Two sequences containing similar k-mers but arranged differently can therefore receive similar representations.
+```bash
+python3 -m venv .venv
+```
 
-### Limited ability to capture long-range relationships
+Activate it on macOS or Linux:
 
-Some biological patterns depend on interactions between regions that are far apart in a sequence.
+```bash
+source .venv/bin/activate
+```
 
-A simple k-mer count representation does not directly model these relationships.
+Upgrade pip:
 
-### Accuracy does not show the complete model performance
+```bash
+python -m pip install --upgrade pip
+```
 
-A high overall accuracy does not necessarily mean that every functional class is predicted equally well.
+Install the project and test dependencies:
 
-For this reason, the updated version will report class-level precision, recall, F1-score, and confusion matrices.
+```bash
+pip install -e ".[test]"
+```
 
-### Sequence similarity can affect evaluation
+On Windows:
 
-Closely related sequences can occur in biological datasets.
+```bash
+py -m venv .venv
+.venv\Scripts\activate
+python -m pip install --upgrade pip
+pip install -e ".[test]"
+```
 
-If very similar sequences appear in both the training and test sets, the reported performance may be higher than the actual generalization performance.
+## Data format
 
-The updated version will include additional checks for sequence similarity and more controlled train-test splits.
+Each dataset contains two columns:
 
-## Work in Progress
+```text
+sequence
+class
+```
 
-### Transformer-Based Genomic Sequence Classification
+Example:
 
-I am currently extending the project by replacing the bag-of-words representation with representations generated by pretrained genomic transformer models.
+```text
+sequence    class
+ATGCCGTA... 0
+GCTTAGCA... 3
+```
 
-The current model only counts local k-mer patterns.
+The current repository contains:
 
-The new version will use a pretrained genomic model to create a representation in which the meaning of a sequence region can depend on the surrounding sequence.
+```text
+human_data.txt
+chimp_data.txt
+dog_data.txt
+```
+
+The files are tab-delimited.
+
+The exact provenance and redistribution terms for the original datasets should be documented once the original dataset source is confirmed.
+
+## Training the baseline
+
+The reproduced baseline is trained on the human dataset.
+
+Run:
+
+```bash
+python -m dna_function_classifier.train \
+  --data human_data.txt \
+  --kmer-size 6 \
+  --ngram-size 4 \
+  --alpha 0.1 \
+  --test-size 0.20 \
+  --random-state 42
+```
+
+The command uses:
+
+```text
+Human dataset
+6-mer representation
+4-token CountVectorizer n-grams
+Multinomial Naive Bayes
+alpha = 0.1
+20% test split
+random_state = 42
+```
+
+A successful training run generates:
+
+```text
+models/baseline.joblib
+
+results/metrics.json
+results/classification_report.csv
+results/confusion_matrix.csv
+results/confusion_matrix.png
+```
+
+Generated model and result files are excluded from version control by default.
+
+## Evaluating the trained model
+
+### Chimpanzee
+
+After training the model on human sequences:
+
+```bash
+python -m dna_function_classifier.evaluate \
+  --model models/baseline.joblib \
+  --data chimp_data.txt \
+  --results-dir results/chimp
+```
+
+The results are written under:
+
+```text
+results/chimp/
+```
+
+### Dog
+
+Run:
+
+```bash
+python -m dna_function_classifier.evaluate \
+  --model models/baseline.joblib \
+  --data dog_data.txt \
+  --results-dir results/dog
+```
+
+The results are written under:
+
+```text
+results/dog/
+```
+
+These evaluations use the same human-trained model and vectorizer.
+
+The classifier is not retrained on the chimpanzee or dog datasets.
+
+## Predicting a sequence
+
+A saved model can also be used to classify an individual DNA sequence.
+
+Example:
+
+```bash
+python -m dna_function_classifier.predict \
+  --model models/baseline.joblib \
+  --sequence "ATGCGTACGTTAGC"
+```
+
+The command loads the saved preprocessing and classification pipeline and returns the predicted functional class.
+
+## Tests
+
+Run the test suite with:
+
+```bash
+pytest
+```
+
+The current test suite covers:
+
+- overlapping k-mer generation
+- sequences shorter than the selected k-mer size
+- k-mer text conversion
+- invalid k-mer sizes
+- sequence normalization
+- whitespace removal
+- ambiguous nucleotide handling
+- invalid nucleotide handling
+- empty sequence handling
+
+The current suite contains eight automated tests.
+
+## Continuous integration
+
+The repository includes a GitHub Actions workflow under:
+
+```text
+.github/workflows/tests.yml
+```
+
+The workflow runs the test suite automatically on pushes and pull requests using supported Python environments.
+
+This provides an additional check that the preprocessing and k-mer utilities continue to work after changes to the repository.
+
+## Work in progress
+
+### Genomic transformer classifier
+
+The next major extension is a transformer-based genomic sequence classifier.
+
+The current baseline relies on explicit k-mer counts. The transformer extension will instead use pretrained sequence representations that can incorporate surrounding sequence context.
 
 The planned workflow is:
 
@@ -229,214 +479,188 @@ Pretrained genomic transformer
 Sequence representation
         |
         v
-Classification layer
+Classification head
         |
         v
 Predicted functional class
 ```
 
-I am evaluating models based on the DNABERT and GENA families for this part of the project.
+I plan to compare two settings.
 
-The purpose of this extension is not only to use a larger model. I want to compare whether contextual sequence representations provide an actual improvement over the simpler k-mer baseline.
-
-### Planned Model Comparison
-
-The updated project will compare several approaches under the same evaluation setup.
+#### Frozen embeddings
 
 ```text
-Multinomial Naive Bayes
-k-mer counts
-Status: Complete
+DNA sequence
+    |
+    v
+Pretrained genomic model
+    |
+    v
+Fixed sequence embedding
+    |
+    v
+Separate classifier
+```
 
+The pretrained model remains frozen and is used only to generate sequence representations.
+
+#### Fine-tuned model
+
+```text
+DNA sequence
+    |
+    v
+Pretrained genomic model
+    |
+    v
+Task-specific classification head
+    |
+    v
+End-to-end fine-tuning
+```
+
+This will allow a direct comparison between:
+
+```text
+Classical k-mer baseline
+vs.
+Frozen genomic transformer embeddings
+vs.
+Fine-tuned genomic transformer
+```
+
+No transformer performance values will be reported until the corresponding experiments have been completed.
+
+### Sequence-similarity-aware evaluation
+
+The cross-species baseline is now complete, but sequence similarity remains an important issue.
+
+Closely related or duplicate sequences can make classification easier if similar sequences occur across training and evaluation sets.
+
+The next evaluation stage will therefore include:
+
+- exact duplicate detection
+- duplicate removal across splits
+- sequence similarity analysis
+- similarity-aware train-test separation
+- grouped evaluation where appropriate
+- species-held-out testing under stricter similarity controls
+
+The objective is to distinguish performance caused by transferable sequence patterns from performance that may depend heavily on highly related sequences.
+
+### Additional classical baselines
+
+I also plan to compare the Naive Bayes model against other classical classifiers using the same sequence representation.
+
+Planned models include:
+
+```text
 Logistic Regression
-k-mer features
-Status: Planned
-
 Linear SVM
-k-mer features
-Status: Planned
-
-Genomic Transformer
-pretrained sequence representation
-Status: In Progress
-
-Fine-tuned Genomic Transformer
-end-to-end sequence classification
-Status: In Progress
+Multinomial Naive Bayes
 ```
 
-The classical model will remain in the repository as a baseline.
+Using the same input representation and evaluation splits will make the model comparison easier to interpret.
 
-This will make it possible to compare the additional complexity of a transformer model against a much simpler machine learning approach.
+### Model interpretation
 
-## Cross-Species Generalization
+Another planned extension is to examine which sequence features influence individual predictions.
 
-Another part currently being added is cross-species evaluation.
+For classical models, this will include:
 
-The existing experiments use human, chimpanzee, and dog sequence data.
+- class-associated k-mer frequencies
+- discriminative k-mer analysis
+- coefficient analysis for linear classifiers
+- comparison of influential patterns across species
 
-Instead of only performing random train-test splits within the combined data, I plan to test whether a model trained using sequences from one group can generalize to another.
+For transformer models, planned experiments include:
 
-Example experiments include:
+- token-level attribution
+- sequence masking
+- prediction changes after removing selected regions
+- comparison of influential regions across species
 
-```text
-Train:
-Human
+## Current limitations
 
-Test:
-Chimpanzee
-Dog
-```
+The current baseline has several limitations.
 
-and:
+### Loss of positional information
 
-```text
-Train:
-Human + Chimpanzee
+The bag-of-words representation does not preserve the complete position of every sequence pattern.
 
-Test:
-Dog
-```
+Two sequences with similar k-mer composition can therefore receive similar representations even when the arrangement of those patterns differs.
 
-This is useful because a model that performs well on a random test split may still depend heavily on sequence patterns that are specific to the training data.
+### Limited long-range modeling
 
-Cross-species evaluation provides a stricter test of whether the model has learned patterns that transfer between species.
+Count-based k-mer features do not directly model relationships between sequence regions that are separated by large distances.
 
-## Sequence-Similarity-Aware Evaluation
+This is one reason for testing transformer-based sequence representations.
 
-I am also adding checks for highly similar sequences between the training and test sets.
+### Sequence similarity
 
-The updated evaluation will include:
+The current cross-species results do not yet control explicitly for highly similar or homologous sequences between datasets.
 
-- Detection of duplicate sequences
-- Removal of exact duplicates across splits
-- Checks for highly similar sequences
-- Group-aware train-test splitting
-- Species-held-out evaluation
+Similarity-aware evaluation is therefore required before drawing stronger conclusions about biological transfer between species.
 
-The purpose is to reduce the possibility of obtaining an unrealistically high result because closely related sequences appear in both the training and test data.
+### Dataset scope
 
-## Explainability
+The current experiments use only the human, chimpanzee, and dog datasets included in the original project.
 
-I also plan to add a basic interpretation layer to understand which sequence patterns influence a prediction.
+Results should not be assumed to generalize to unrelated datasets, species, or functional annotation tasks without additional evaluation.
 
-For the classical models, this will include:
+### Biological interpretation
 
-- Important k-mers for individual classes
-- Frequency analysis of class-associated k-mers
-- Model coefficient analysis where applicable
-- Comparison of influential sequence patterns across species
+The model identifies statistical patterns associated with the functional labels in the available dataset.
 
-For the transformer model, planned experiments include:
+Its predictions should not be treated as experimentally validated biological annotations.
 
-- Token-level attribution
-- Sequence masking
-- Comparison of predictions after removing selected regions
-- Analysis of sequence regions that consistently affect a prediction
+## Technologies used
 
-The objective is to understand what information is being used by the model instead of reporting only a predicted class.
+Current implementation:
 
-## Evaluation Plan
+- Python
+- pandas
+- NumPy
+- scikit-learn
+- Jupyter Notebook
+- CountVectorizer
+- Multinomial Naive Bayes
+- joblib
+- matplotlib
+- pytest
+- GitHub Actions
 
-The updated version will use the following metrics:
+In progress or planned:
 
-```text
-Accuracy
-Precision
-Recall
-Macro F1
-Weighted F1
-Confusion Matrix
-Per-Class F1
-```
+- PyTorch
+- Hugging Face Transformers
+- pretrained genomic language models
+- similarity-aware splitting
+- additional classical classifiers
+- sequence interpretation methods
 
-For cross-species experiments, results will be reported separately for each held-out species.
+## Method references
 
-The final comparison will include both model performance and computational cost.
+The references below are included for external methods, software, and pretrained models used or being evaluated in this project.
 
-For example:
+1. scikit-learn documentation. `CountVectorizer`, text feature extraction using token counts.
 
-```text
-Model                     Accuracy    Macro F1    Training Time
-----------------------------------------------------------------
-Naive Bayes               TBD         TBD         TBD
-Logistic Regression       TBD         TBD         TBD
-Linear SVM                TBD         TBD         TBD
-Genomic Transformer       TBD         TBD         TBD
-Fine-tuned Transformer    TBD         TBD         TBD
-```
+2. scikit-learn documentation. `MultinomialNB`, multinomial Naive Bayes classification for count-based features.
 
-The transformer results will only be added after the corresponding experiments are completed.
+3. scikit-learn documentation. Common pitfalls and recommended practices, including train-test separation and prevention of preprocessing leakage.
 
-## Planned Improvements
+4. Ji Y, Zhou Z, Liu H, Davuluri RV. DNABERT: pre-trained Bidirectional Encoder Representations from Transformers model for DNA-language in genome. *Bioinformatics*. 2021;37(15):2112-2120. DOI: 10.1093/bioinformatics/btab083.
 
-The current development plan is:
+5. Zhou Z, Ji Y, Li W, Dutta P, Davuluri R, Liu H. DNABERT-2: Efficient Foundation Model and Benchmark for Multi-Species Genome. 2023. arXiv:2306.15006.
 
-- [x] Load DNA sequence datasets
-- [x] Clean and preprocess sequences
-- [x] Generate overlapping k-mers
-- [x] Convert sequences using CountVectorizer
-- [x] Train Multinomial Naive Bayes classifier
-- [x] Tune the smoothing parameter
-- [x] Test the method on human, chimpanzee, and dog datasets
-- [ ] Add precision, recall, and F1 evaluation
-- [ ] Add confusion matrices
-- [ ] Compare Logistic Regression
-- [ ] Compare Linear SVM
-- [ ] Check duplicate and highly similar sequences across splits
-- [ ] Add group-aware data splitting
-- [ ] Add species-held-out evaluation
-- [ ] Generate embeddings using a pretrained genomic transformer
-- [ ] Train a classifier using transformer embeddings
-- [ ] Fine-tune a genomic transformer for the classification task
-- [ ] Compare classical and transformer models
-- [ ] Add model interpretation experiments
-- [ ] Move reusable code from notebooks into Python modules
-- [ ] Add automated tests
-- [ ] Add reproducible training and evaluation scripts
+## License
 
-## Why I Started This Project
+This project is released under the GNU General Public License v3.0.
 
-My academic background is in Biological Sciences and Bioengineering, while a large part of my work has involved programming, data analysis, and machine learning.
-
-I started this project to understand how methods used in machine learning and natural language processing can be applied to biological sequence data.
-
-The first version was intentionally based on a relatively simple method so that I could understand the complete process, starting from the raw DNA sequence and ending with a classification result.
-
-The current work extends the same project toward genomic language models and more controlled evaluation.
-
-## Future Direction
-
-The immediate goal is to complete the comparison between the original k-mer based classifier and a pretrained genomic transformer.
-
-After that, possible extensions include:
-
-- Testing additional species
-- Testing different k-mer lengths
-- Evaluating larger genomic language models
-- Comparing frozen embeddings with full model fine-tuning
-- Adding sequence-level interpretation
-- Building a reusable command-line prediction interface
-- Adding a small inference API
-- Containerizing the inference workflow
-- Adding continuous testing for preprocessing and inference code
-
-The project will continue to keep the classical baseline so that improvements from the more complex models can be measured against a simple reference.
-
-## References
-
-The original project was based on the idea of representing DNA sequences as k-mer tokens and applying text-classification methods to biological sequence data.
-
-The current extension is also informed by work on pretrained DNA language models, including:
-
-- DNABERT: Pre-trained Bidirectional Encoder Representations from Transformers model for DNA-language in genome
-- DNABERT-2: Efficient Foundation Model and Benchmark for Multi-Species Genome
-- GENA-LM: A family of open-source foundational DNA language models for long sequences
-
-These models are being used as references for the transformer-based extension. The implementation and experimental comparison in this repository are being developed separately for this project.
+See `LICENSE` for the complete license terms.
 
 ## Disclaimer
 
-This is a machine learning and computational biology project intended for learning and experimentation.
+This project is intended for machine learning and computational biology experimentation.
 
-The predictions produced by the models should not be treated as experimentally validated biological annotations or used for clinical or medical decisions.
+The predictions produced by the models are not experimentally validated biological annotations and should not be used for clinical or medical decisions.
